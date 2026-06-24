@@ -415,26 +415,7 @@ impl<S: From<(ChannelId, ChannelMsg)> + Send + Sync + 'static> ChannelWriteHalf<
     pub async fn close(&self) -> Result<(), Error> {
         self.send_msg(ChannelMsg::Close).await
     }
-    /// Get a `FnOnce` that can be used to send a signal through this channel
-    pub fn get_signal_sender(
-        &self,
-    ) -> impl FnOnce(Sig) -> Pin<Box<dyn Future<Output = Result<(), Error>> + std::marker::Send>>
-    {
-        let sender = self.sender.clone();
-        let id = self.id;
-
-        move |signal| {
-            async move {
-                sender
-                    .send((id, ChannelMsg::Signal { signal }).into())
-                    .await
-                    .map_err(|_| Error::SendError)?;
-
-                Ok(())
-            }
-            .boxed()
-        }
-    }
+    
 
     async fn send_msg(&self, msg: ChannelMsg) -> Result<(), Error> {
         self.sender
@@ -715,6 +696,27 @@ impl<S: From<(ChannelId, ChannelMsg)> + Send + Sync + 'static> Channel<S> {
     /// depending on the `ext` parameter, through the `AsyncWrite` trait.
     pub fn make_writer_ext(&self, ext: Option<u32>) -> impl AsyncWrite + 'static {
         self.write_half.make_writer_ext(ext)
+    }
+
+    /// Get a `FnOnce` that can be used to send a signal through this channel
+    pub fn get_signal_sender(
+        &self,
+    ) -> impl FnOnce(Sig) -> Pin<Box<dyn Future<Output = Result<(), Error>> + std::marker::Send>> + use<S>
+    {
+        let sender = self.write_half.sender.clone();
+        let id = self.write_half.id;
+
+        move |signal| {
+            async move {
+                sender
+                    .send((id, ChannelMsg::Signal { signal }).into())
+                    .await
+                    .map_err(|_| Error::SendError)?;
+
+                Ok(())
+            }
+            .boxed()
+        }
     }
 }
 
